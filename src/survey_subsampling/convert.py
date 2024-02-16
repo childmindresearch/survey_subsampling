@@ -2,8 +2,6 @@
 
 from argparse import ArgumentParser
 from pyreadr import read_r
-import pandas as pd
-import pyarrow.parquet as pq
 
 
 def main():
