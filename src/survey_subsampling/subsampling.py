@@ -43,7 +43,6 @@ CBCLABCL_items = list(set(CBCL_items) - set(CBCL_ABCL_cannot_be_harmonized))
 
 Dx_labels_all = ["dcany", "dcanyanx", "dcanydep", "dcanyhk", "dcanycd", "dcsepa",
                  "dcspph", "dcsoph", "dcpanic", "dcagor", "dcptsd", "dcocd",
-#                  "dcgena", "dcdmdd", "dcmadep", "dcmania", "dcodd", "dccd"]
                  "dcgena", "dcmadep", "dcmania", "dcodd", "dccd"]
 
 Dx_labels_subset = ["dcany", "dcanyanx", "dcanydep", "dcanyhk", "dcanycd", "dcodd"]
