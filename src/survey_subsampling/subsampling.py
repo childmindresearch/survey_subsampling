@@ -1,8 +1,17 @@
 #!/usr/bin/env python
 
+from dataclasses import dataclass, field
 from argparse import ArgumentParser
 from os import PathLike
+from typing import List
+
+from sklearn.metrics import accuracy_score, f1_score, classification_report, class_likelihood_ratios
+from sklearn.calibration import CalibratedClassifierCV
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import StratifiedKFold
+import plotly.express as px
 import pandas as pd
+import numpy as np
 
 
 CBCL_ABCL_cannot_be_harmonized = ["cl1", "cl2", "cl6", "cl15", "cl23", "cl30", "cl38", "cl44",
@@ -44,8 +53,68 @@ CBCLABCL_items = list(set(CBCL_items) - set(CBCL_ABCL_cannot_be_harmonized))
 
 Dx_labels_all = ["dcany", "dcanyanx", "dcanydep", "dcanyhk", "dcanycd", "dcsepa",
                  "dcspph", "dcsoph", "dcpanic", "dcagor", "dcptsd", "dcocd",
-#                  "dcgena", "dcdmdd", "dcmadep", "dcmania", "dcodd", "dccd"]
-                 "dcgena", "dcmadep", "dcmania", "dcodd", "dccd"]
+                 "dcgena", "dcdmdd", "dcmadep", "dcmania", "dcodd", "dccd"]
+
+@dataclass
+class Learner:
+    """Data class to record and present statistics from trained & evaluated models"""
+    dx: str  # Diagnosis
+    hc_n: int  # Number of healthy controls
+    dx_n: int  # Number of patients
+    x_ids: List = field(default_factory=lambda: [])  # List of features used in the learner
+    fi: List = field(default_factory=lambda: [])  # Feature importance lists
+    f1: List = field(default_factory=lambda: [])  # F1 score lists
+    sen: List = field(default_factory=lambda: [])  # Sensitivity score lists
+    spe: List = field(default_factory=lambda: [])  # Specificity score lists
+    LRp: List = field(default_factory=lambda: [])  # Positive likelihood ratio lists
+    LRn: List = field(default_factory=lambda: [])  # Negative likelihood ratio lists
+    acc_train: List = field(default_factory=lambda: [])  # Performance on the training set
+    acc_valid: List = field(default_factory=lambda: [])  # Performance on the validation set
+
+    proba: List = field(default_factory=lambda: [])  # Prediction probability/confidence
+    label: List = field(default_factory=lambda: [])  # Prediction labels
+
+    def summary(self, verbose=False):
+        """Constructs a dataframe from the models and prints a summary report"""
+        self._sanitize()
+        
+        tmpdict = [{
+            'Dx': self.dx,
+            'N_HC': self.hc_n,
+            'N_Pt': self.dx_n,
+            'N_xs': len(self.x_ids),
+            'F1': np.mean(self.f1),
+            'Sensitivity': np.mean(self.sen),
+            'Specificity': np.mean(self.spe),
+            'LR+': np.mean(self.LRp),
+            'LR-': np.mean(self.LRn),
+            'Accuracy (Train)': np.mean(self.acc_train),
+            'Accuracy (Validation)': np.mean(self.acc_valid)
+            
+        }]
+        tmpdf = pd.DataFrame.from_dict(tmpdict)
+
+        if verbose:
+            self._plot_probas()
+            print(tmpdf)
+
+        return tmpdf
+    
+    def _sanitize(self):
+        """Make lists of lists a bit more palletable..."""
+        self.proba = np.vstack(self.proba)
+        self.label = np.hstack(self.label)
+    
+    def _plot_probas(self):
+        """Show prediction confidence scores"""
+        tmpdict = {
+            'proba' : self.proba[:,1],            
+            'label' : self.label
+        }
+        tmpdf = pd.DataFrame.from_dict(tmpdict)
+        fig = px.histogram(tmpdf, color='label', x='proba', marginal='box',
+                           barmode="overlay", opacity=0.7, category_orders={'label':[0,1]})
+        fig.show()
 
 
 def load_data(infile: PathLike, threshold: int=50, verbose: bool=True):
@@ -55,31 +124,38 @@ def load_data(infile: PathLike, threshold: int=50, verbose: bool=True):
     df_full[Dx_labels_all] = df_full[Dx_labels_all].replace({2.0:1, 0.0:0})
 
     # Define column selector utility that we'll iteratively use to subsample the dataset.
-    def _column_selector(df: pd.DataFrame, columns: list):
-        return df[columns].dropna(axis=0, how='any')
+    def _column_selector(df: pd.DataFrame, columns: list, drop: bool=False):        
+        return df[columns].dropna(axis=0, how='any') if drop else df[columns]
 
     def _get_prevalance(df: pd.DataFrame, diagnoses: list):
         tmp = []
         for dx in diagnoses:
             vc = df[dx].value_counts()
             tmp += [{"Dx": dx, "HC": vc.loc[0.0], "Pt":vc.loc[1.0]}]
-        return pd.DataFrame.from_dict(tmp).set_index('Dx')
+        return pd.DataFrame.from_dict(tmp).set_index('Dx').sort_values(by='Pt')
 
+    # Initialize the dataset cleaning
+    # Subset table based on all diagnoses, compute prevalance
+    df = _column_selector(df_full, CBCLABCL_items + Dx_labels_all, drop=False)
+    df_prev = _get_prevalance(df, diagnoses=Dx_labels_all)
+
+    # Drop low-prevalance diagnoses right away from sparse dataset
+    #        full list of diagnoses  -  all diagnoses with low prevalance
+    Dx_labels_subset = list(set(df_prev.index) - set(df_prev[df_prev['Pt'] < threshold].index))
+
+    # Prepare to iteratively repeat the process, as the N of various conditions may change as
+    # we prune missing data and subsequently change the included column lists
     low_N = True
-    Dx_labels_subset = Dx_labels_all
     while low_N:
-        # Subset table based on relevant diagnoses
-        df = _column_selector(df_full, CBCLABCL_items + Dx_labels_subset)
-        # Compute diagnostic prevalance
+        # Repeat dataset table subsetting (densely this time), compute prevalance, and drop low N
+        df = _column_selector(df_full, CBCLABCL_items + Dx_labels_subset, drop=True)
         df_prev = _get_prevalance(df, diagnoses=Dx_labels_subset)
 
-        # Abuse walrus operators to get a dataframe of low-prevalance diagnoses...
-        if low_N := len(low_N_df := df_prev[df_prev['Pt'] < 50]):
+        # Grab a dataframe of the low-prevalance diagnoses...
+        low_N_df = df_prev[df_prev['Pt'] < threshold]
+        if low_N := (len(low_N_df.index) > 0):
             # ... and remove them from the set of consideration, then go again
-            Dx_labels_subset = list(set(Dx_labels_subset)-set(set(low_N_df.index)))
-            continue
-        # If there aren't any low-count diagnoses left, we're done
-        break
+            Dx_labels_subset = list(set(Dx_labels_subset)-set(low_N_df.index))
 
     # Report on prevalance table and overall dataset length
     if verbose:
@@ -87,16 +163,216 @@ def load_data(infile: PathLike, threshold: int=50, verbose: bool=True):
         print("Original Dataset Length:", len(df_full))
         print("Pruned Dataset Length:", len(df))
 
-    return df, df_prev
+    return df, df_prev, Dx_labels_subset
+
+
+def fit_models(df: pd.DataFrame, x_ids: list, y_ids: list, verbose: bool=True):
+    """General purpose function for fitting callibrated classifiers for Dx from Survey data"""
+ 
+    # Establish Models & Cross-Validation Strategy
+    #   Base classifier: Random Forest. Rationale: non-parametric, has feature importance
+    clf_rf = RandomForestClassifier(n_estimators=100, class_weight='balanced')
+    #   CV: Stratified K-fold. Rationale: shuffle data, balance classes across folds
+    cv = StratifiedKFold(shuffle=True, random_state=42)
+    #   Top-level classifier: Calibrated CV classifier. Rationale: prioritizes maintaining class balances
+    clf_calib = CalibratedClassifierCV(estimator=clf_rf, cv=cv)
+    np.random.seed(42)
+
+    # Create X (feature) matrix: grab relevant survey columns x rows from dataframe
+    X = df[x_ids].values
+
+    # Create empty list of learners
+    learners = []
+    summaries = []
+    # For every Dx that we want to predict...
+    for y_name in y_ids:
+        # Create the y (target) matrix/vector: grab relevant Dx rows from dataframe
+        y = df[y_name].values.astype(int)
+        
+        # Get Pt and HC counts from dataframe, and initialize the learner object
+        _, uc = np.unique(y, return_counts=True)
+
+        if verbose:
+            print(f"Dx: {y_name} | HC: {uc[0]} | Pt: {uc[1]}")
+
+        current_learner = Learner(dx=y_name, hc_n=uc[0], dx_n=uc[1], x_ids=x_ids)
+        # Set-up a CV loop (note, we use the same CV strategy both within the Calibrated CLF and here,
+        #   resulting in nested-stratified-k-fold-CV)
+        for idx_train, idx_test in cv.split(X, y):
+            # Split the dataset into train and test sets
+            X_tr = X[idx_train, :]
+            y_tr = y[idx_train]
+
+            X_te = X[idx_test, :]
+            y_te = y[idx_test]
+
+            # Fit the callibrated classifier on the training data
+            clf_calib.fit(X_tr, y_tr)
+
+            # Extract/Generate relevant data from (all internal folds of) the classifier...
+            # Make predictions on the test set
+            y_pred = clf_calib.predict(X_te)
+            
+            # Grab training and validation performance using the integrated scoring function (accuracy)
+            y_pred_tr = clf_calib.predict(X_tr)
+            current_learner.acc_train.append(accuracy_score(y_tr, y_pred_tr))
+            current_learner.acc_valid.append(accuracy_score(y_te, y_pred))
+
+            # Grab feature importance scores
+            fis = [_.estimator.feature_importances_ for _ in clf_calib.calibrated_classifiers_]
+            current_learner.fi.append(fis)
+
+            # Grab the prediction probabilities
+            current_learner.proba.append(clf_calib.predict_proba(X_te))
+            current_learner.label.append(y_te)
+
+            # Grab the prediction labels
+            current_learner.f1.append(f1_score(y_te, y_pred))
+
+            # Grab the sensitivity and specificity (i.e. recall of each of Dx and HC classes)
+            report_dict = classification_report(y_te, y_pred, output_dict=True)
+            current_learner.sen.append(report_dict['1']['recall'])
+            current_learner.spe.append(report_dict['0']['recall'])
+
+            # Grab the positive/negative likelihood ratios
+            lrp, lrn = class_likelihood_ratios(y_te, y_pred)
+            current_learner.LRp.append(lrp)
+            current_learner.LRn.append(lrn)
+
+        # Summarize current learner performance, save it, and get ready to go again!
+        summaries += [current_learner.summary()]
+
+        tmp_learner = {'Dx': current_learner.dx}
+
+        means = np.mean(np.vstack(current_learner.fi), axis=0)
+        for assessment, importance in zip(x_ids, means):
+            tmp_learner[assessment] = importance
+        learners += [tmp_learner]
+
+        del current_learner
+    
+    # Improve formatting of summaries and complete learners
+    summaries = pd.concat(summaries).set_index('Dx')
+    learners = pd.DataFrame.from_dict(learners).set_index('Dx')
+
+    return learners, summaries
+
+
+def calculate_feature_importance(learners: list, x_ids: list, outdir: PathLike, number_of_questions: int=20, plot=True):
+    """Visualizes feature importance and sorts values using two strategies: aggregate and top-N"""
+    # Melt the dataframe into a long format for plotting
+    df_learners_melt = learners.reset_index()
+    df_learners_melt = df_learners_melt.melt(id_vars=['Dx'], value_vars=x_ids, value_name='importance')
+
+    # Sort based on aggregate feature importance 
+    sort_agg = (df_learners_melt
+                .groupby('variable')
+                .sum()
+                .reset_index()
+                .sort_values('importance')['variable'].values[::-1])
+
+    if plot:
+        # Plot a stacked-bar of feature importance across diagnoses, sorted by variable importance
+        fig = px.bar(df_learners_melt, x="variable", y="importance", color="Dx",
+                    title="Relative feature importance of survey questions across diagnoses",
+                    labels={"variable": "CBCL Question",
+                            "importance": "Relative Feature Importance",
+                            "target": "Diagnosis"},
+                    template='plotly_white')
+
+        # Update plot to reflect sorting, and target number of questions
+        fig.update_xaxes(categoryorder='array', categoryarray=sort_agg)
+        fig.update_layout(width=1620, height=900, legend={'orientation': 'v','y':0.97,'x':0.84})
+        fig.add_vline(x=sort_agg[number_of_questions+1], line_width=1, line_dash="dash", line_color="gray")
+        fig.write_image(f'{outdir}/feature_importance_agg.png')
+
+
+    # Redo sorting and plotting with the top-N approach
+    # Initialize an empty list of questions, to be populated iteratively.
+    topN = len(x_ids)
+    item_relevance = np.empty((topN, len(x_ids)))
+
+    # For each threshold of "we can only include N questions..."
+    for n in range(topN):
+        # Record the proportion of diagnoses for which a given question belongs
+        item_relevance[n, :] = (learners[x_ids]
+                                .rank(axis=1, ascending=False)
+                                .apply(lambda x: x <= n+1)
+                                .sum(axis=0))
+
+    # Sort the prevalance table we just built, and apply it to the questions
+    idx_topn = np.lexsort(item_relevance[::-1,:])[::-1]
+    sort_topn = np.array(x_ids)[idx_topn]
+    n_diagnoses = len(learners)
+
+    if plot:
+        # Plot a heatmap of feature importance across top-N selection for each diagnosis
+        fig = px.imshow(item_relevance[:, idx_topn]*1.0/n_diagnoses,
+                        x=sort_topn, y=np.arange(topN)+1,
+                        labels={'x':'CBCL Question',
+                                'y':'Number of Questions (N)',
+                                'color':'Top-N Fraction'},
+                        title="Consistency of question usefulness across diagnoses",
+                        template='plotly_white')
+
+        # Update plot to reflect the target number of questions
+        fig.update_layout(width=1620, height=900)
+        fig.add_vline(x=sort_topn[number_of_questions+1], line_width=1, line_dash="dash", line_color="gray")
+        fig.write_image(f'{outdir}/feature_importance_topn.png')
+
+    # Report the sorted list using both approaches
+    sorted_importance_agg = sort_agg[0:number_of_questions]
+    print(f"The {number_of_questions} cumulatively most predictive survey questions overall are:", ", ".join(sorted_importance_agg))
+    
+    sorted_importance_topn = sort_topn[0:number_of_questions]
+    print(f"The {number_of_questions} most commonly useful survey questions overall are:", ", ".join(sorted_importance_topn))
+
+    # Evaluate sorting consistency
+    all_qs = list(set(list(sorted_importance_agg) + list(sorted_importance_topn)))
+    diff = np.abs(number_of_questions-len(all_qs))
+    frac = 1.0*diff/number_of_questions*100
+    print(f"The two lists differ by {diff} / {number_of_questions} items ({frac:.2f}%)")
+
+    # Compute the average position across the two methods and produce a 3rd and final sorting
+    avg_rank = np.mean(np.where(sort_agg[:, None] == sort_topn), axis=0)
+    sort_avg = sort_agg[np.argsort(avg_rank)]
+
+    return sort_agg, sort_topn, sort_avg
+
 
 def main():
     parser = ArgumentParser()
     parser.add_argument("infile")
-    parser.add_argument('-v', '--verbose', action='store_true')
+    parser.add_argument("outdir")
+    parser.add_argument("-n", "--number_of_questions", default=20, type=int)
+    parser.add_argument("-t", "--threshold", default=150, type=int)
+    parser.add_argument("-v", "--verbose", action="store_true")
 
+    # Grab input values
     infile = '../../data/converted/harmonized_allwaves.parquet'
-    df, df_prev = load_data(infile)
-    print(df)
+    outdir = '../../data/figures/'
+    threshold = 150
+    verbose = True
+    NQ = 20
+
+    # Load the dataset and remove incomplete subjects and under-represented diagnoses
+    df, df_prev, Dx_labels_subset = load_data(infile, threshold=threshold, verbose=verbose)
+    print(len(df_prev))
+
+    # Establish baseline prediction, and further remove diagnostic labels for which the models
+    #  fail to make reasonable predictions (read as: make predictions to both classes;
+    #  identifiable as diagnoses with a NaN for LR+)
+    learners, summaries = fit_models(df, CBCLABCL_items, Dx_labels_subset, verbose=verbose)
+    Dx_labels_subset = list(set(Dx_labels_subset) - set(summaries[summaries['LR+'].isna()].index))
+    summaries = summaries.loc[Dx_labels_subset]
+    learners = learners.loc[Dx_labels_subset]
+    print(summaries)
+
+    sorted_agg, sorted_topn, sorted_avg = calculate_feature_importance(learners, CBCLABCL_items, outdir, number_of_questions=NQ)
+
+    # qs = {"fi": list(fi_qs), "topN": list(topn_qs)}
+    # with open('../../data/qs_20.json', 'w') as fhandle:
+    #     json.dump(qs, fhandle)
 
 if __name__ == "__main__":
     main()
