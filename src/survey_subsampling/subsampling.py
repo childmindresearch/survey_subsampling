@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from argparse import ArgumentParser
+from os import PathLike
 import pandas as pd
 
 
@@ -43,31 +44,50 @@ CBCLABCL_items = list(set(CBCL_items) - set(CBCL_ABCL_cannot_be_harmonized))
 
 Dx_labels_all = ["dcany", "dcanyanx", "dcanydep", "dcanyhk", "dcanycd", "dcsepa",
                  "dcspph", "dcsoph", "dcpanic", "dcagor", "dcptsd", "dcocd",
+#                  "dcgena", "dcdmdd", "dcmadep", "dcmania", "dcodd", "dccd"]
                  "dcgena", "dcmadep", "dcmania", "dcodd", "dccd"]
 
-Dx_labels_subset = ["dcany", "dcanyanx", "dcanydep", "dcanyhk", "dcanycd", "dcodd"]
 
-def load_data(infile, verbose=True):
+def load_data(infile: PathLike, threshold: int=50, verbose: bool=True):
     """Grabs a parquet file, extracts the columns we want, removes NaNs, and returns"""
-    df = pd.read_parquet(infile)
+    # Grabs data file from disk, sets diagnostic labels to 0 or 1.
+    df_full = pd.read_parquet(infile)
+    df_full[Dx_labels_all] = df_full[Dx_labels_all].replace({2.0:1, 0.0:0})
 
-    if verbose:
-        print("Original Dataset Length:", len(df))
+    # Define column selector utility that we'll iteratively use to subsample the dataset.
+    def _column_selector(df: pd.DataFrame, columns: list):
+        return df[columns].dropna(axis=0, how='any')
 
-    df = df[CBCLABCL_items + Dx_labels_all].dropna(axis=0, how='any')
-    df[Dx_labels_all] = df[Dx_labels_all].replace({2.0:1, 0.0:0})
-
-    if verbose:
-        print("Pruned Dataset Length:", len(df))
-
-        # Build diagnostic prevalance table
+    def _get_prevalance(df: pd.DataFrame, diagnoses: list):
         tmp = []
-        for dx in Dx_labels_all:
+        for dx in diagnoses:
             vc = df[dx].value_counts()
             tmp += [{"Dx": dx, "HC": vc.loc[0.0], "Pt":vc.loc[1.0]}]
-        print(pd.DataFrame.from_dict(tmp).set_index('Dx'))
+        return pd.DataFrame.from_dict(tmp).set_index('Dx')
 
-    return df
+    low_N = True
+    Dx_labels_subset = Dx_labels_all
+    while low_N:
+        # Subset table based on relevant diagnoses
+        df = _column_selector(df_full, CBCLABCL_items + Dx_labels_subset)
+        # Compute diagnostic prevalance
+        df_prev = _get_prevalance(df, diagnoses=Dx_labels_subset)
+
+        # Abuse walrus operators to get a dataframe of low-prevalance diagnoses...
+        if low_N := len(low_N_df := df_prev[df_prev['Pt'] < 50]):
+            # ... and remove them from the set of consideration, then go again
+            Dx_labels_subset = list(set(Dx_labels_subset)-set(set(low_N_df.index)))
+            continue
+        # If there aren't any low-count diagnoses left, we're done
+        break
+
+    # Report on prevalance table and overall dataset length
+    if verbose:
+        print(df_prev)
+        print("Original Dataset Length:", len(df_full))
+        print("Pruned Dataset Length:", len(df))
+
+    return df, df_prev
 
 def main():
     parser = ArgumentParser()
@@ -75,7 +95,8 @@ def main():
     parser.add_argument('-v', '--verbose', action='store_true')
 
     infile = '../../data/converted/harmonized_allwaves.parquet'
-    df = load_data(infile)
+    df, df_prev = load_data(infile)
+    print(df)
 
 if __name__ == "__main__":
     main()
