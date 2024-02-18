@@ -340,6 +340,33 @@ def calculate_feature_importance(learners: list, x_ids: list, outdir: PathLike, 
     return sort_agg, sort_topn, sort_avg
 
 
+def degrading_fit(df: pd.DataFrame, sorted_x_ids: list, y_ids: list, verbose: bool=True):
+    """Routine that wraps the `fit_models` function, gradually degrading the performance by reducing the x-set"""
+    # Initiatlize some storage containers
+    degrading_learners = []
+    degrading_summaries = []
+
+    # For each number of questions (from the length of sorted_x_ids down to 1)...
+    print("Number of questions used: ", end="")
+    for n_questions in range(len(sorted_x_ids))[::-1]:
+        print(",", n_questions+1, end=" ")
+
+        # Grab the first n_questions from the sorted list
+        xi = sorted_x_ids[0:n_questions+1]
+
+        # Fit the diagnostic prediction models using this reduced x-set
+        dl, sm = fit_models(df, xi, y_ids, verbose=False)
+
+        # Store the learners and respective summaries for later
+        degrading_learners += [dl]
+        degrading_summaries += [sm]
+    print(".")
+
+    # Concatenate and return the summaries
+    degrading_summaries = pd.concat(degrading_summaries)
+    return degrading_summaries
+
+
 def main():
     parser = ArgumentParser()
     parser.add_argument("infile")
@@ -357,7 +384,6 @@ def main():
 
     # Load the dataset and remove incomplete subjects and under-represented diagnoses
     df, df_prev, Dx_labels_subset = load_data(infile, threshold=threshold, verbose=verbose)
-    print(len(df_prev))
 
     # Establish baseline prediction, and further remove diagnostic labels for which the models
     #  fail to make reasonable predictions (read as: make predictions to both classes;
@@ -368,11 +394,14 @@ def main():
     learners = learners.loc[Dx_labels_subset]
     print(summaries)
 
+    # Compute and plot feature importance, and then save results in a CSV file
     sorted_agg, sorted_topn, sorted_avg = calculate_feature_importance(learners, CBCLABCL_items, outdir, number_of_questions=NQ)
+    importance = pd.DataFrame({'Aggregate': sorted_agg, 'Top-N': sorted_topn, 'Average': sorted_avg})
+    importance.to_parquet(f'{outdir}/feature_importance.parquet')
 
-    # qs = {"fi": list(fi_qs), "topN": list(topn_qs)}
-    # with open('../../data/qs_20.json', 'w') as fhandle:
-    #     json.dump(qs, fhandle)
+    # Finally, redo the learning process with a degrading set of data, iteratively removing questions
+    learners_deg, summaries_deg = degrading_fit(df, sorted_avg, Dx_labels_subset)
+
 
 if __name__ == "__main__":
     main()
