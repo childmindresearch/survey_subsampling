@@ -3,8 +3,8 @@
 
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 ![stability-wip](https://img.shields.io/badge/stability-work_in_progress-lightgrey.svg)
-[![L-GPL License](https://img.shields.io/badge/license-L--GPL-blue.svg)](https://github.com/cmi-dair/survey_subsampling/blob/main/LICENSE)
-[![pages](https://img.shields.io/badge/api-docs-blue)](https://cmi-dair.github.io/survey_subsampling)
+[![L-GPL License](https://img.shields.io/badge/license-L--GPL-blue.svg)](https://github.com/childmindresearch/survey_subsampling/blob/main/LICENSE)
+[![pages](https://img.shields.io/badge/api-docs-blue)](https://childmindresearch.github.io/survey_subsampling)
 
 This is the beginnings of a package which takes a data-driven approach to reducing the size of complex survey instruments based on their ability to predict independently collected assessment data. In simpler words, reduce tools like the CBCL to fewer items, based on their ability to predict diagnostic status.
 
