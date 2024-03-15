@@ -4,7 +4,7 @@ from argparse import ArgumentParser
 from pyreadr import read_r
 
 
-def main():
+def run():
     parser = ArgumentParser()
     parser.add_argument('infile')
     parser.add_argument('outfile')
@@ -21,4 +21,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    run()

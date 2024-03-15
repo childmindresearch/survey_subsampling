@@ -35,3 +35,6 @@ pythonpath = [
 
 [tool.mypy]
 ignore_missing_imports = true
+
+[tool.poetry.scripts]
+subsample_convert = 'survey_subsampling.convert:run'
