@@ -1,18 +1,20 @@
 #!/usr/bin/env python
+"""Contains plotting functions and runscript."""
 
 from argparse import ArgumentParser
 
 import numpy as np
 import pandas as pd
 import plotly.express as px
+from plotly.graph_objects import Figure
 
 from survey_subsampling import sorting
 from survey_subsampling.core import constants
 from survey_subsampling.core.learner import Learner
 
 
-def single_learner_probability_distribution(learner: Learner):
-    """Show prediction confidence scores"""
+def single_learner_probability_distribution(learner: Learner) -> Figure:
+    """Show prediction confidence scores."""
     tmpdict = {"proba": learner.proba[:, 1], "label": learner.label}
     tmpdf = pd.DataFrame.from_dict(tmpdict)
     fig = px.histogram(
@@ -29,8 +31,8 @@ def single_learner_probability_distribution(learner: Learner):
 
 def many_learner_feature_importance_stacked(
     learners: pd.DataFrame, x_ids_sorted: list, number_of_questions: int = 20
-):
-    # Plot a stacked-bar of feature importance across diagnoses, sorted by variable importance
+) -> Figure:
+    """Plot a stacked-bar of feature importance across diagnoses."""
     fig = px.bar(
         learners,
         x="variable",
@@ -66,8 +68,8 @@ def many_learner_feature_importance_heatmap(
     idx_sorted: list,
     n_diagnoses: int,
     number_of_questions: int = 20,
-):
-    # Plot a heatmap of feature importance across top-N selection for each diagnosis
+) -> Figure:
+    """Plot a heatmap of feature importance across topN selection for each diagnosis."""
     fig = px.imshow(
         item_relevance[:, idx_sorted] * 1.0 / n_diagnoses,
         x=x_ids_sorted,
@@ -93,7 +95,8 @@ def many_learner_feature_importance_heatmap(
     return fig
 
 
-def run():
+def run() -> None:
+    """Runner for plotting utility."""
     # TODO: improve docstrings, helptext, and the like
     parser = ArgumentParser()
     parser.add_argument("outdir")
@@ -110,7 +113,7 @@ def run():
     # Try loading the relevant data
     try:
         learners = pd.read_parquet(f"{outdir}/learners.parquet")
-        summaries_deg = pd.read_parquet(f"{outdir}/summaries_degraded.parquet")
+        # summaries_deg = pd.read_parquet(f"{outdir}/summaries_degraded.parquet")
     except FileNotFoundError as e:
         e.strerror = "Plotting requires subsample analysis to be run, generating"
         raise (e)
