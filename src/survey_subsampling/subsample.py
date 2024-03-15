@@ -160,7 +160,7 @@ def fit_models(df: pd.DataFrame, x_ids: list, y_ids: list, verbose: bool=True):
 def calculate_feature_importance(learners: pd.DataFrame, x_ids: list, outdir: PathLike, number_of_questions: int=20, plot=True):
     """Visualizes feature importance and sorts values using two strategies: aggregate and top-N"""
     
-    _, x_ids_sorted_by_aggregate = sorting.aggregate_sort(learners, x_ids=x_ids)
+    _, x_ids_sorted_by_aggregate = sorting.aggregate_sort(learners, x_ids)
     _, x_ids_sorted_by_topn, _ = sorting.topn_sort(learners, x_ids)
 
     # Report the sorted list using both approaches
