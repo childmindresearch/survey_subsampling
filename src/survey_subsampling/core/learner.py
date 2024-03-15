@@ -3,8 +3,8 @@
 from dataclasses import dataclass, field
 from typing import List
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 
 
 @dataclass
@@ -29,7 +29,7 @@ class Learner:
     def summary(self, verbose=False):
         """Constructs a dataframe from the models and prints a summary report"""
         self._sanitize()
-        
+
         tmpdict = [{
             'Dx': self.dx,
             'N_HC': self.hc_n,
@@ -42,7 +42,7 @@ class Learner:
             'LR-': np.mean(self.LRn),
             'Accuracy (Train)': np.mean(self.acc_train),
             'Accuracy (Validation)': np.mean(self.acc_valid)
-            
+
         }]
         tmpdf = pd.DataFrame.from_dict(tmpdict)
 
@@ -51,9 +51,8 @@ class Learner:
             print(tmpdf)
 
         return tmpdf
-    
+
     def _sanitize(self):
         """Make lists of lists a bit more palletable..."""
         self.proba = np.vstack(self.proba)
         self.label = np.hstack(self.label)
-

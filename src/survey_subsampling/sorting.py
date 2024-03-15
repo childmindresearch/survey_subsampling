@@ -1,14 +1,15 @@
 #!/usr/bin/env python
 
-import  pandas as pd
 import numpy as np
+import pandas as pd
+
 
 def aggregate_sort(learners_dataframe: pd.DataFrame, x_ids: list):
     # Melt the dataframe into long form
     melted_learners_df = learners_dataframe.reset_index()
     melted_learners_df = melted_learners_df.melt(id_vars=['Dx'], value_vars=x_ids, value_name='importance')
 
-    # Sort based on aggregate feature importance 
+    # Sort based on aggregate feature importance
     sort_agg = (melted_learners_df
                 .groupby('variable')
                 .sum()

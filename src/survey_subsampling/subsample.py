@@ -1,19 +1,21 @@
 #!/usr/bin/env python
 
-from concurrent.futures import ProcessPoolExecutor, as_completed
 from argparse import ArgumentParser
-from os import PathLike, path as op, makedirs
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from os import PathLike, makedirs
+from os import path as op
 
-from sklearn.metrics import accuracy_score, f1_score, classification_report, class_likelihood_ratios
+import numpy as np
+import pandas as pd
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import (accuracy_score, class_likelihood_ratios,
+                             classification_report, f1_score)
 from sklearn.model_selection import StratifiedKFold
-import pandas as pd
-import numpy as np
 
+from survey_subsampling import sorting
 from survey_subsampling.core import constants
 from survey_subsampling.core.learner import Learner
-from survey_subsampling import sorting
 
 
 def load_data(infile: PathLike, threshold: int=50, verbose: bool=True):
@@ -23,7 +25,7 @@ def load_data(infile: PathLike, threshold: int=50, verbose: bool=True):
     df_full[constants.Dx_labels_all] = df_full[constants.Dx_labels_all].replace({2.0:1, 0.0:0})
 
     # Define column selector utility that we'll iteratively use to subsample the dataset.
-    def _column_selector(df: pd.DataFrame, columns: list, drop: bool=False):        
+    def _column_selector(df: pd.DataFrame, columns: list, drop: bool=False):
         return df[columns].dropna(axis=0, how='any') if drop else df[columns]
 
     def _get_prevalance(df: pd.DataFrame, diagnoses: list):
@@ -67,7 +69,7 @@ def load_data(infile: PathLike, threshold: int=50, verbose: bool=True):
 
 def fit_models(df: pd.DataFrame, x_ids: list, y_ids: list, verbose: bool=True):
     """General purpose function for fitting callibrated classifiers for Dx from Survey data"""
- 
+
     # Establish Models & Cross-Validation Strategy
     #   Base classifier: Random Forest. Rationale: non-parametric, has feature importance
     clf_rf = RandomForestClassifier(n_estimators=100, class_weight='balanced')
@@ -87,7 +89,7 @@ def fit_models(df: pd.DataFrame, x_ids: list, y_ids: list, verbose: bool=True):
     for y_name in y_ids:
         # Create the y (target) matrix/vector: grab relevant Dx rows from dataframe
         y = df[y_name].values.astype(int)
-        
+
         # Get Pt and HC counts from dataframe, and initialize the learner object
         _, uc = np.unique(y, return_counts=True)
 
@@ -111,7 +113,7 @@ def fit_models(df: pd.DataFrame, x_ids: list, y_ids: list, verbose: bool=True):
             # Extract/Generate relevant data from (all internal folds of) the classifier...
             # Make predictions on the test set
             y_pred = clf_calib.predict(X_te)
-            
+
             # Grab training and validation performance using the integrated scoring function (accuracy)
             y_pred_tr = clf_calib.predict(X_tr)
             current_learner.acc_train.append(accuracy_score(y_tr, y_pred_tr))
@@ -149,7 +151,7 @@ def fit_models(df: pd.DataFrame, x_ids: list, y_ids: list, verbose: bool=True):
         learners += [tmp_learner]
 
         del current_learner
-    
+
     # Improve formatting of summaries and complete learners
     summaries = pd.concat(summaries).set_index('Dx')
     learners = pd.DataFrame.from_dict(learners).set_index('Dx')
@@ -159,14 +161,14 @@ def fit_models(df: pd.DataFrame, x_ids: list, y_ids: list, verbose: bool=True):
 
 def calculate_feature_importance(learners: pd.DataFrame, x_ids: list, outdir: PathLike, number_of_questions: int=20, plot=True):
     """Visualizes feature importance and sorts values using two strategies: aggregate and top-N"""
-    
+
     _, x_ids_sorted_by_aggregate = sorting.aggregate_sort(learners, x_ids)
     _, x_ids_sorted_by_topn, _ = sorting.topn_sort(learners, x_ids)
 
     # Report the sorted list using both approaches
     sorted_importance_agg = x_ids_sorted_by_aggregate[0:number_of_questions]
     print(f"The {number_of_questions} cumulatively most predictive survey questions overall are:", ", ".join(sorted_importance_agg))
-    
+
     sorted_importance_topn = x_ids_sorted_by_topn[0:number_of_questions]
     print(f"The {number_of_questions} most commonly useful survey questions overall are:", ", ".join(sorted_importance_topn))
 
@@ -202,11 +204,11 @@ def degrading_fit(df: pd.DataFrame, sorted_x_ids: list, y_ids: list, threads: in
     # Store the results as they come in
     for future in as_completed(futures):
         degraded_tuple.append(future.result())
-    
+
     # Separate the learners and respective summaries
     degraded_learners = [dt[0] for dt in degraded_tuple]
     degraded_summaries = [dt[1] for dt in degraded_tuple]
-    
+
     # Concatenate and return the learners and summaries
     degraded_summaries = pd.concat(degraded_summaries)
     degraded_learners = pd.concat(degraded_learners)
@@ -236,7 +238,7 @@ def run():
     np.random.seed(args.random_state)
 
     # Prepare output directory
-    if not op.isdir(f'{outdir}'): 
+    if not op.isdir(f'{outdir}'):
         makedirs(f'{outdir}')
 
     # Suppress the many warnings that come up when training degrading learners by default

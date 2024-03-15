@@ -2,18 +2,19 @@
 
 from argparse import ArgumentParser
 
-import plotly.express as px
-import pandas as pd
 import numpy as np
+import pandas as pd
+import plotly.express as px
 
-from survey_subsampling.core.learner import Learner
 from survey_subsampling import sorting
 from survey_subsampling.core import constants
+from survey_subsampling.core.learner import Learner
+
 
 def single_learner_probability_distribution(learner: Learner):
     """Show prediction confidence scores"""
     tmpdict = {
-        'proba' : learner.proba[:,1],            
+        'proba' : learner.proba[:,1],
         'label' : learner.label
     }
     tmpdf = pd.DataFrame.from_dict(tmpdict)
@@ -76,7 +77,7 @@ def run():
     except FileNotFoundError as e:
         e.strerror = "Plotting requires subsample analysis to be run, generating"
         raise(e)
-    
+
     # First pass: re-sort the dataframes and plot feature importance
     learners_sorted_by_aggregate, x_ids_sorted_by_aggregate = sorting.aggregate_sort(learners, x_ids=constants.CBCLABCL_items)
     relevance_sorted_by_topn, x_ids_sorted_by_topn, x_idx_topn = sorting.topn_sort(learners, constants.CBCLABCL_items)
@@ -88,11 +89,11 @@ def run():
 
     fig = many_learner_feature_importance_heatmap(relevance_sorted_by_topn, x_ids_sorted_by_topn, x_idx_topn,
                                                   n_diagnoses=n_diagnoses, number_of_questions=NQ)
-    fig.write_image(f'{outdir}/feature_importance_topn.{ext}')    
+    fig.write_image(f'{outdir}/feature_importance_topn.{ext}')
 
     # Second pass: plot degrading performance results
     # TODO: port from notebook
-    
+
 
 
 if __name__ == "__main__":
