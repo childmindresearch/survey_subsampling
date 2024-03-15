@@ -2,7 +2,7 @@
 
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from argparse import ArgumentParser
-from os import PathLike
+from os import PathLike, path as op, makedirs
 
 from sklearn.metrics import accuracy_score, f1_score, classification_report, class_likelihood_ratios
 from sklearn.calibration import CalibratedClassifierCV
@@ -13,7 +13,6 @@ import numpy as np
 
 from survey_subsampling.core import constants
 from survey_subsampling.core.learner import Learner
-from survey_subsampling import plotting
 from survey_subsampling import sorting
 
 
@@ -161,13 +160,8 @@ def fit_models(df: pd.DataFrame, x_ids: list, y_ids: list, verbose: bool=True):
 def calculate_feature_importance(learners: pd.DataFrame, x_ids: list, outdir: PathLike, number_of_questions: int=20, plot=True):
     """Visualizes feature importance and sorts values using two strategies: aggregate and top-N"""
     
-    learners_sorted_by_aggregate, x_ids_sorted_by_aggregate = sorting.aggregate_sort(learners, x_ids=x_ids, number_of_questions=number_of_questions)
-    relevance_sorted_by_topn, x_ids_sorted_by_topn, x_idx_topn = sorting.topn_sort()
-
-    if plot:
-        n_diagnoses = len(learners)
-        plotting.many_learner_feature_importance_stacked(learners_sorted_by_aggregate, x_ids_sorted_by_aggregate)
-        plotting.many_learner_feature_importance_stacked(relevance_sorted_by_topn, x_ids_sorted_by_topn, x_idx_topn, n_dx=n_diagnoses)
+    _, x_ids_sorted_by_aggregate = sorting.aggregate_sort(learners, x_ids=x_ids)
+    _, x_ids_sorted_by_topn, _ = sorting.topn_sort(learners, x_ids)
 
     # Report the sorted list using both approaches
     sorted_importance_agg = x_ids_sorted_by_aggregate[0:number_of_questions]
@@ -220,6 +214,7 @@ def degrading_fit(df: pd.DataFrame, sorted_x_ids: list, y_ids: list, threads: in
 
 
 def run():
+    # TODO: improve docstrings, helptext, and the like
     parser = ArgumentParser()
     parser.add_argument("infile")
     parser.add_argument("outdir")
@@ -232,16 +227,17 @@ def run():
     args = parser.parse_args()
 
     # Grab input values
-    # infile = '../../data/converted/harmonized_allwaves.parquet'
-    # outdir = '../../data/figures/'
     infile = args.infile
     outdir = args.outdir
     threshold = args.dx_threshold
     verbose = args.verbose
     NQ = args.number_of_questions
     nt = args.n_threads
-
     np.random.seed(args.random_state)
+
+    # Prepare output directory
+    if not op.isdir(f'{outdir}'): 
+        makedirs(f'{outdir}')
 
     # Suppress the many warnings that come up when training degrading learners by default
     if not args.warnings:
@@ -261,7 +257,8 @@ def run():
 
     summaries = summaries.loc[Dx_labels_subset]
     summaries.to_parquet(f'{outdir}/summaries.parquet')
-    print(summaries)
+    if verbose:
+        print(summaries)
 
     # Compute and plot feature importance, and then save results in a CSV file
     sorted_agg, sorted_topn, sorted_avg = calculate_feature_importance(learners, constants.CBCLABCL_items, outdir, number_of_questions=NQ)
