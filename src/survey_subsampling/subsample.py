@@ -1,9 +1,11 @@
 #!/usr/bin/env python
+"""Survey subsampling functions and runscript."""
 
 from argparse import ArgumentParser
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from os import PathLike, makedirs
 from os import path as op
+from typing import Tuple
 
 import numpy as np
 import pandas as pd
@@ -22,19 +24,23 @@ from survey_subsampling.core import constants
 from survey_subsampling.core.learner import Learner
 
 
-def load_data(infile: PathLike, threshold: int = 50, verbose: bool = True):
-    """Grabs a parquet file, extracts the columns we want, removes NaNs, and returns"""
+def load_data(
+    infile: PathLike, threshold: int = 50, verbose: bool = True
+) -> Tuple[pd.DataFrame, pd.DataFrame, list]:
+    """Grabs a parquet file, extracts the columns we want, removes NaNs, and returns."""
     # Grabs data file from disk, sets diagnostic labels to 0 or 1.
     df_full = pd.read_parquet(infile)
     df_full[constants.Dx_labels_all] = df_full[constants.Dx_labels_all].replace(
         {2.0: 1, 0.0: 0}
     )
 
-    # Define column selector utility that we'll iteratively use to subsample the dataset.
-    def _column_selector(df: pd.DataFrame, columns: list, drop: bool = False):
+    # Define column selector utility to iteratively use to subsample the dataset.
+    def _column_selector(
+        df: pd.DataFrame, columns: list, drop: bool = False
+    ) -> pd.DataFrame:
         return df[columns].dropna(axis=0, how="any") if drop else df[columns]
 
-    def _get_prevalance(df: pd.DataFrame, diagnoses: list):
+    def _get_prevalance(df: pd.DataFrame, diagnoses: list) -> pd.DataFrame:
         tmp = []
         for dx in diagnoses:
             vc = df[dx].value_counts()
@@ -54,11 +60,11 @@ def load_data(infile: PathLike, threshold: int = 50, verbose: bool = True):
         set(df_prev.index) - set(df_prev[df_prev["Pt"] < threshold].index)
     )
 
-    # Prepare to iteratively repeat the process, as the N of various conditions may change as
-    # we prune missing data and subsequently change the included column lists
+    # Prepare to iteratively repeat the process as the total N for each Dx may
+    # change as we prune missing data and change the included column lists
     low_N = True
     while low_N:
-        # Repeat dataset table subsetting (densely this time), compute prevalance, and drop low N
+        # Repeat dataset table subsetting (densely this time) and drop low N
         df = _column_selector(
             df_full, constants.CBCLABCL_items + Dx_labels_subset, drop=True
         )
@@ -79,15 +85,17 @@ def load_data(infile: PathLike, threshold: int = 50, verbose: bool = True):
     return df, df_prev, Dx_labels_subset
 
 
-def fit_models(df: pd.DataFrame, x_ids: list, y_ids: list, verbose: bool = True):
-    """General purpose function for fitting callibrated classifiers for Dx from Survey data"""
-
+def fit_models(
+    df: pd.DataFrame, x_ids: list, y_ids: list, verbose: bool = True
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """General purpose function for fitting callibrated classifiers."""
     # Establish Models & Cross-Validation Strategy
-    #   Base classifier: Random Forest. Rationale: non-parametric, has feature importance
+    #   Base clf: Random Forest. Rationale: non-parametric, has feature importance
     clf_rf = RandomForestClassifier(n_estimators=100, class_weight="balanced")
     #   CV: Stratified K-fold. Rationale: shuffle data, balance classes across folds
     cv = StratifiedKFold(shuffle=True, random_state=42)
-    #   Top-level classifier: Calibrated CV classifier. Rationale: prioritizes maintaining class balances
+    #   Top-level clf: Calibrated CV classifier.
+    #   Rationale: prioritizes maintaining class balances
     clf_calib = CalibratedClassifierCV(estimator=clf_rf, cv=cv)
     np.random.seed(42)
 
@@ -109,8 +117,8 @@ def fit_models(df: pd.DataFrame, x_ids: list, y_ids: list, verbose: bool = True)
             print(f"Dx: {y_name} | HC: {uc[0]} | Pt: {uc[1]}")
 
         current_learner = Learner(dx=y_name, hc_n=uc[0], dx_n=uc[1], x_ids=x_ids)
-        # Set-up a CV loop (note, we use the same CV strategy both within the Calibrated CLF and here,
-        #   resulting in nested-stratified-k-fold-CV)
+        # Set-up a CV loop (note, we use the same CV strategy both within the
+        #  Calibrated CLF and here, resulting in nested-stratified-k-fold-CV)
         for idx_train, idx_test in cv.split(X, y):
             # Split the dataset into train and test sets
             X_tr = X[idx_train, :]
@@ -122,11 +130,11 @@ def fit_models(df: pd.DataFrame, x_ids: list, y_ids: list, verbose: bool = True)
             # Fit the callibrated classifier on the training data
             clf_calib.fit(X_tr, y_tr)
 
-            # Extract/Generate relevant data from (all internal folds of) the classifier...
+            # Extract/Generate relevant data from (all internal folds of) the clf...
             # Make predictions on the test set
             y_pred = clf_calib.predict(X_te)
 
-            # Grab training and validation performance using the integrated scoring function (accuracy)
+            # Grab training and validation perf using the integrated scoring (accuracy)
             y_pred_tr = clf_calib.predict(X_tr)
             current_learner.acc_train.append(accuracy_score(y_tr, y_pred_tr))
             current_learner.acc_valid.append(accuracy_score(y_te, y_pred))
@@ -145,7 +153,7 @@ def fit_models(df: pd.DataFrame, x_ids: list, y_ids: list, verbose: bool = True)
             # Grab the prediction labels
             current_learner.f1.append(f1_score(y_te, y_pred))
 
-            # Grab the sensitivity and specificity (i.e. recall of each of Dx and HC classes)
+            # Grab the sensitivity and specificity (i.e. recall of each of Dx and HC)
             report_dict = classification_report(y_te, y_pred, output_dict=True)
             current_learner.sen.append(report_dict["1"]["recall"])
             current_learner.spe.append(report_dict["0"]["recall"])
@@ -179,23 +187,22 @@ def calculate_feature_importance(
     x_ids: list,
     outdir: PathLike,
     number_of_questions: int = 20,
-    plot=True,
-):
-    """Visualizes feature importance and sorts values using two strategies: aggregate and top-N"""
-
+    plot: bool = True,
+) -> Tuple[list, list, list]:
+    """Sorts values using two strategies: aggregate and topN."""
     _, x_ids_sorted_by_aggregate = sorting.aggregate_sort(learners, x_ids)
     _, x_ids_sorted_by_topn, _ = sorting.topn_sort(learners, x_ids)
 
     # Report the sorted list using both approaches
     sorted_importance_agg = x_ids_sorted_by_aggregate[0:number_of_questions]
     print(
-        f"The {number_of_questions} cumulatively most predictive survey questions overall are:",
+        f"The {number_of_questions} cumulatively most predictive features are:",
         ", ".join(sorted_importance_agg),
     )
 
     sorted_importance_topn = x_ids_sorted_by_topn[0:number_of_questions]
     print(
-        f"The {number_of_questions} most commonly useful survey questions overall are:",
+        f"The {number_of_questions} most commonly useful features are:",
         ", ".join(sorted_importance_topn),
     )
 
@@ -205,7 +212,7 @@ def calculate_feature_importance(
     frac = 1.0 * diff / number_of_questions * 100
     print(f"The two lists differ by {diff} / {number_of_questions} items ({frac:.2f}%)")
 
-    # Compute the average position across the two methods and produce a 3rd and final sorting
+    # Compute the average position across the two methods
     avg_rank = np.mean(
         np.where(x_ids_sorted_by_aggregate[:, None] == x_ids_sorted_by_topn), axis=0
     )
@@ -220,8 +227,8 @@ def degrading_fit(
     y_ids: list,
     threads: int = 4,
     verbose: bool = True,
-):
-    """Routine that wraps the `fit_models` function, gradually degrading the performance by reducing the x-set"""
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """Wrapper for fit_models that degrades the performance by reducing the x-set."""
     # Initiatlize some storage containers
     degraded_tuple = []
     futures = []
@@ -233,7 +240,7 @@ def degrading_fit(
             xi = sorted_x_ids[0 : n_questions + 1]
 
             # Add the diagnostic prediction models to the queue using this reduced x-set
-            #   Equivalent command: degraded_tuple = fit_models(df, xi, y_ids, verbose=False)
+            #   Equiv command: degraded_tuple = fit_models(df, xi, y_ids, verbose=False)
             futures.append(pool.submit(fit_models, df, xi, y_ids, verbose=False))
 
     # Store the results as they come in
@@ -250,7 +257,8 @@ def degrading_fit(
     return degraded_learners, degraded_summaries
 
 
-def run():
+def run() -> None:
+    """CLI runscript for subsampling."""
     # TODO: improve docstrings, helptext, and the like
     parser = ArgumentParser()
     parser.add_argument("infile")
@@ -276,7 +284,7 @@ def run():
     if not op.isdir(f"{outdir}"):
         makedirs(f"{outdir}")
 
-    # Suppress the many warnings that come up when training degrading learners by default
+    # Suppress the warnings that come up when training degrading learners by default
     if not args.warnings:
         import warnings
 
@@ -287,9 +295,9 @@ def run():
         infile, threshold=threshold, verbose=verbose
     )
 
-    # Establish baseline prediction, and further remove diagnostic labels for which the models
-    #  fail to make reasonable predictions (read as: make predictions to both classes;
-    #  identifiable as diagnoses with a NaN for LR+)
+    # Establish baseline prediction, and further remove diagnostic labels for which the
+    #  models fail to make reasonable predictions (read as: make predictions to both
+    #  classes; identifiable as diagnoses with a NaN for LR+)
     learners, summaries = fit_models(
         df, constants.CBCLABCL_items, Dx_labels_subset, verbose=verbose
     )
@@ -313,7 +321,7 @@ def run():
     )
     importance.to_parquet(f"{outdir}/feature_importance.parquet")
 
-    # Finally, redo the learning process with a degrading set of data, iteratively removing questions
+    # Redo the learning process with a degrading set of data
     learners_deg, summaries_deg = degrading_fit(
         df, sorted_avg, Dx_labels_subset, threads=nt, verbose=verbose
     )
