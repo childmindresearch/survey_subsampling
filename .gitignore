@@ -1,6 +1,7 @@
 .ruff_cache
 
 data/
+data
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

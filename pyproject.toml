@@ -82,3 +82,7 @@ target-version = "py311"
 [build-system]
 requires = [ "poetry-core>=1.2.0" ]
 build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+subsample_convert = 'survey_subsampling.convert:run'
+subsample = 'survey_subsampling.subsample:run'
