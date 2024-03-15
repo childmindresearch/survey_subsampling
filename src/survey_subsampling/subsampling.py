@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from argparse import ArgumentParser
 from os import PathLike
@@ -340,31 +341,34 @@ def calculate_feature_importance(learners: list, x_ids: list, outdir: PathLike, 
     return sort_agg, sort_topn, sort_avg
 
 
-def degrading_fit(df: pd.DataFrame, sorted_x_ids: list, y_ids: list, verbose: bool=True):
+def degrading_fit(df: pd.DataFrame, sorted_x_ids: list, y_ids: list, threads: int=4, verbose: bool=True):
     """Routine that wraps the `fit_models` function, gradually degrading the performance by reducing the x-set"""
     # Initiatlize some storage containers
-    degrading_learners = []
-    degrading_summaries = []
+    degraded_tuple = []
+    futures = []
 
-    # For each number of questions (from the length of sorted_x_ids down to 1)...
-    print("Number of questions used: ", end="")
-    for n_questions in range(len(sorted_x_ids))[::-1]:
-        print(",", n_questions+1, end=" ")
+    with ProcessPoolExecutor(max_workers=threads) as pool:
+        # For each number of questions (from the length of sorted_x_ids down to 1)...
+        for n_questions in range(len(sorted_x_ids))[::-1]:
+            # Grab the first n_questions from the sorted list
+            xi = sorted_x_ids[0:n_questions+1]
 
-        # Grab the first n_questions from the sorted list
-        xi = sorted_x_ids[0:n_questions+1]
+            # Add the diagnostic prediction models to the queue using this reduced x-set
+            #   Equivalent command: degraded_tuple = fit_models(df, xi, y_ids, verbose=False)
+            futures.append(pool.submit(fit_models, df, xi, y_ids, verbose=False))
 
-        # Fit the diagnostic prediction models using this reduced x-set
-        dl, sm = fit_models(df, xi, y_ids, verbose=False)
-
-        # Store the learners and respective summaries for later
-        degrading_learners += [dl]
-        degrading_summaries += [sm]
-    print(".")
-
-    # Concatenate and return the summaries
-    degrading_summaries = pd.concat(degrading_summaries)
-    return degrading_summaries
+    # Store the results as they come in
+    for future in as_completed(futures):
+        degraded_tuple.append(future.result())
+    
+    # Separate the learners and respective summaries
+    degraded_learners = [dt[0] for dt in degraded_tuple]
+    degraded_summaries = [dt[1] for dt in degraded_tuple]
+    
+    # Concatenate and return the learners and summaries
+    degraded_summaries = pd.concat(degraded_summaries)
+    degraded_learners = pd.concat(degraded_learners)
+    return  degraded_learners, degraded_summaries
 
 
 def main():
@@ -372,15 +376,29 @@ def main():
     parser.add_argument("infile")
     parser.add_argument("outdir")
     parser.add_argument("-n", "--number_of_questions", default=20, type=int)
-    parser.add_argument("-t", "--threshold", default=150, type=int)
+    parser.add_argument("--random_state", default=42, type=int)
+    parser.add_argument("-t", "--dx_threshold", default=150, type=int)
     parser.add_argument("-v", "--verbose", action="store_true")
+    parser.add_argument("-w", "--warnings", action="store_true")
+    parser.add_argument("--n_threads", default=4, type=int)
+    args = parser.parse_args()
 
     # Grab input values
-    infile = '../../data/converted/harmonized_allwaves.parquet'
-    outdir = '../../data/figures/'
-    threshold = 150
-    verbose = True
-    NQ = 20
+    # infile = '../../data/converted/harmonized_allwaves.parquet'
+    # outdir = '../../data/figures/'
+    infile = args.infile
+    outdir = args.outdir
+    threshold = args.dx_threshold
+    verbose = args.verbose
+    NQ = args.number_of_questions
+    nt = args.n_threads
+
+    np.random.seed(args.random_state)
+
+    # Suppress the many warnings that come up when training degrading learners by default
+    if not args.warnings:
+        import warnings
+        warnings.filterwarnings("ignore")
 
     # Load the dataset and remove incomplete subjects and under-represented diagnoses
     df, df_prev, Dx_labels_subset = load_data(infile, threshold=threshold, verbose=verbose)
@@ -390,8 +408,11 @@ def main():
     #  identifiable as diagnoses with a NaN for LR+)
     learners, summaries = fit_models(df, CBCLABCL_items, Dx_labels_subset, verbose=verbose)
     Dx_labels_subset = list(set(Dx_labels_subset) - set(summaries[summaries['LR+'].isna()].index))
-    summaries = summaries.loc[Dx_labels_subset]
     learners = learners.loc[Dx_labels_subset]
+    learners.to_parquet(f'{outdir}/learners.parquet')
+
+    summaries = summaries.loc[Dx_labels_subset]
+    summaries.to_parquet(f'{outdir}/summaries.parquet')
     print(summaries)
 
     # Compute and plot feature importance, and then save results in a CSV file
@@ -400,7 +421,9 @@ def main():
     importance.to_parquet(f'{outdir}/feature_importance.parquet')
 
     # Finally, redo the learning process with a degrading set of data, iteratively removing questions
-    learners_deg, summaries_deg = degrading_fit(df, sorted_avg, Dx_labels_subset)
+    learners_deg, summaries_deg = degrading_fit(df, sorted_avg, Dx_labels_subset, threads=nt, verbose=verbose)
+    summaries_deg.to_parquet(f'{outdir}/summaries_degraded.parquet')
+    learners_deg.to_parquet(f'{outdir}/learners_degraded.parquet')
 
 
 if __name__ == "__main__":
