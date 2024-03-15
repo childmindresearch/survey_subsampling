@@ -12,6 +12,11 @@ readme = "README.md"
 
   [tool.poetry.dependencies]
   python = "^3.11"
+  plotly = "^5.20.0"
+  pandas = "^2.2.1"
+  scikit-learn = "^1.4.1.post1"
+  pyreadr = "^0.5.0"
+  numpy = "^1.26.4"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.1.1"
