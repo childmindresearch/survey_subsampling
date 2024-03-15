@@ -2,4 +2,4 @@
 .. include:: ../../README.md
 """
 
-from . import convert, subsampling
+from . import convert, subsample

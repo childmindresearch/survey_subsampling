@@ -33,5 +33,20 @@ There are a few scripts in this library so far, and there are specific usecases 
 ### Have `.Rdata` that you'd like to work with?
 
 ```bash
-subsample_convert <your_Rdata_file> <your_desired_parquet_file>
+subsample_convert <your_Rdata_file> <your_converted_parquet_file>
 ```
+
+### Want to subsample your assessment instrument?
+
+```bash
+subsample <your_parquet_file> <your_output_directory>  # And optionally, a bunch of other arguments
+```
+
+
+## Notes
+
+Currently, there are many limitations in this module. In particular:
+- This is overfit to CBCL, ABCL, and their harmonized items
+- This is overfit to specific diagnostic labels
+- This is has solely been tested on the Brazillian High Risk Cohort dataset, and thus other quirks of organization may not generally apply
+- Many more, I'm sure
