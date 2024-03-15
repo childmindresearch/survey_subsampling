@@ -9,8 +9,12 @@ import numpy as np
 import pandas as pd
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import (accuracy_score, class_likelihood_ratios,
-                             classification_report, f1_score)
+from sklearn.metrics import (
+    accuracy_score,
+    class_likelihood_ratios,
+    classification_report,
+    f1_score,
+)
 from sklearn.model_selection import StratifiedKFold
 
 from survey_subsampling import sorting
@@ -18,45 +22,53 @@ from survey_subsampling.core import constants
 from survey_subsampling.core.learner import Learner
 
 
-def load_data(infile: PathLike, threshold: int=50, verbose: bool=True):
+def load_data(infile: PathLike, threshold: int = 50, verbose: bool = True):
     """Grabs a parquet file, extracts the columns we want, removes NaNs, and returns"""
     # Grabs data file from disk, sets diagnostic labels to 0 or 1.
     df_full = pd.read_parquet(infile)
-    df_full[constants.Dx_labels_all] = df_full[constants.Dx_labels_all].replace({2.0:1, 0.0:0})
+    df_full[constants.Dx_labels_all] = df_full[constants.Dx_labels_all].replace(
+        {2.0: 1, 0.0: 0}
+    )
 
     # Define column selector utility that we'll iteratively use to subsample the dataset.
-    def _column_selector(df: pd.DataFrame, columns: list, drop: bool=False):
-        return df[columns].dropna(axis=0, how='any') if drop else df[columns]
+    def _column_selector(df: pd.DataFrame, columns: list, drop: bool = False):
+        return df[columns].dropna(axis=0, how="any") if drop else df[columns]
 
     def _get_prevalance(df: pd.DataFrame, diagnoses: list):
         tmp = []
         for dx in diagnoses:
             vc = df[dx].value_counts()
-            tmp += [{"Dx": dx, "HC": vc.loc[0.0], "Pt":vc.loc[1.0]}]
-        return pd.DataFrame.from_dict(tmp).set_index('Dx').sort_values(by='Pt')
+            tmp += [{"Dx": dx, "HC": vc.loc[0.0], "Pt": vc.loc[1.0]}]
+        return pd.DataFrame.from_dict(tmp).set_index("Dx").sort_values(by="Pt")
 
     # Initialize the dataset cleaning
     # Subset table based on all diagnoses, compute prevalance
-    df = _column_selector(df_full, constants.CBCLABCL_items + constants.Dx_labels_all, drop=False)
+    df = _column_selector(
+        df_full, constants.CBCLABCL_items + constants.Dx_labels_all, drop=False
+    )
     df_prev = _get_prevalance(df, diagnoses=constants.Dx_labels_all)
 
     # Drop low-prevalance diagnoses right away from sparse dataset
     #        full list of diagnoses  -  all diagnoses with low prevalance
-    Dx_labels_subset = list(set(df_prev.index) - set(df_prev[df_prev['Pt'] < threshold].index))
+    Dx_labels_subset = list(
+        set(df_prev.index) - set(df_prev[df_prev["Pt"] < threshold].index)
+    )
 
     # Prepare to iteratively repeat the process, as the N of various conditions may change as
     # we prune missing data and subsequently change the included column lists
     low_N = True
     while low_N:
         # Repeat dataset table subsetting (densely this time), compute prevalance, and drop low N
-        df = _column_selector(df_full, constants.CBCLABCL_items + Dx_labels_subset, drop=True)
+        df = _column_selector(
+            df_full, constants.CBCLABCL_items + Dx_labels_subset, drop=True
+        )
         df_prev = _get_prevalance(df, diagnoses=Dx_labels_subset)
 
         # Grab a dataframe of the low-prevalance diagnoses...
-        low_N_df = df_prev[df_prev['Pt'] < threshold]
+        low_N_df = df_prev[df_prev["Pt"] < threshold]
         if low_N := (len(low_N_df.index) > 0):
             # ... and remove them from the set of consideration, then go again
-            Dx_labels_subset = list(set(Dx_labels_subset)-set(low_N_df.index))
+            Dx_labels_subset = list(set(Dx_labels_subset) - set(low_N_df.index))
 
     # Report on prevalance table and overall dataset length
     if verbose:
@@ -67,12 +79,12 @@ def load_data(infile: PathLike, threshold: int=50, verbose: bool=True):
     return df, df_prev, Dx_labels_subset
 
 
-def fit_models(df: pd.DataFrame, x_ids: list, y_ids: list, verbose: bool=True):
+def fit_models(df: pd.DataFrame, x_ids: list, y_ids: list, verbose: bool = True):
     """General purpose function for fitting callibrated classifiers for Dx from Survey data"""
 
     # Establish Models & Cross-Validation Strategy
     #   Base classifier: Random Forest. Rationale: non-parametric, has feature importance
-    clf_rf = RandomForestClassifier(n_estimators=100, class_weight='balanced')
+    clf_rf = RandomForestClassifier(n_estimators=100, class_weight="balanced")
     #   CV: Stratified K-fold. Rationale: shuffle data, balance classes across folds
     cv = StratifiedKFold(shuffle=True, random_state=42)
     #   Top-level classifier: Calibrated CV classifier. Rationale: prioritizes maintaining class balances
@@ -120,7 +132,10 @@ def fit_models(df: pd.DataFrame, x_ids: list, y_ids: list, verbose: bool=True):
             current_learner.acc_valid.append(accuracy_score(y_te, y_pred))
 
             # Grab feature importance scores
-            fis = [_.estimator.feature_importances_ for _ in clf_calib.calibrated_classifiers_]
+            fis = [
+                _.estimator.feature_importances_
+                for _ in clf_calib.calibrated_classifiers_
+            ]
             current_learner.fi.append(fis)
 
             # Grab the prediction probabilities
@@ -132,8 +147,8 @@ def fit_models(df: pd.DataFrame, x_ids: list, y_ids: list, verbose: bool=True):
 
             # Grab the sensitivity and specificity (i.e. recall of each of Dx and HC classes)
             report_dict = classification_report(y_te, y_pred, output_dict=True)
-            current_learner.sen.append(report_dict['1']['recall'])
-            current_learner.spe.append(report_dict['0']['recall'])
+            current_learner.sen.append(report_dict["1"]["recall"])
+            current_learner.spe.append(report_dict["0"]["recall"])
 
             # Grab the positive/negative likelihood ratios
             lrp, lrn = class_likelihood_ratios(y_te, y_pred)
@@ -143,7 +158,7 @@ def fit_models(df: pd.DataFrame, x_ids: list, y_ids: list, verbose: bool=True):
         # Summarize current learner performance, save it, and get ready to go again!
         summaries += [current_learner.summary()]
 
-        tmp_learner = {'Dx': current_learner.dx}
+        tmp_learner = {"Dx": current_learner.dx}
 
         means = np.mean(np.vstack(current_learner.fi), axis=0)
         for assessment, importance in zip(x_ids, means):
@@ -153,13 +168,19 @@ def fit_models(df: pd.DataFrame, x_ids: list, y_ids: list, verbose: bool=True):
         del current_learner
 
     # Improve formatting of summaries and complete learners
-    summaries = pd.concat(summaries).set_index('Dx')
-    learners = pd.DataFrame.from_dict(learners).set_index('Dx')
+    summaries = pd.concat(summaries).set_index("Dx")
+    learners = pd.DataFrame.from_dict(learners).set_index("Dx")
 
     return learners, summaries
 
 
-def calculate_feature_importance(learners: pd.DataFrame, x_ids: list, outdir: PathLike, number_of_questions: int=20, plot=True):
+def calculate_feature_importance(
+    learners: pd.DataFrame,
+    x_ids: list,
+    outdir: PathLike,
+    number_of_questions: int = 20,
+    plot=True,
+):
     """Visualizes feature importance and sorts values using two strategies: aggregate and top-N"""
 
     _, x_ids_sorted_by_aggregate = sorting.aggregate_sort(learners, x_ids)
@@ -167,25 +188,39 @@ def calculate_feature_importance(learners: pd.DataFrame, x_ids: list, outdir: Pa
 
     # Report the sorted list using both approaches
     sorted_importance_agg = x_ids_sorted_by_aggregate[0:number_of_questions]
-    print(f"The {number_of_questions} cumulatively most predictive survey questions overall are:", ", ".join(sorted_importance_agg))
+    print(
+        f"The {number_of_questions} cumulatively most predictive survey questions overall are:",
+        ", ".join(sorted_importance_agg),
+    )
 
     sorted_importance_topn = x_ids_sorted_by_topn[0:number_of_questions]
-    print(f"The {number_of_questions} most commonly useful survey questions overall are:", ", ".join(sorted_importance_topn))
+    print(
+        f"The {number_of_questions} most commonly useful survey questions overall are:",
+        ", ".join(sorted_importance_topn),
+    )
 
     # Evaluate sorting consistency
     all_qs = list(set(list(sorted_importance_agg) + list(sorted_importance_topn)))
-    diff = np.abs(number_of_questions-len(all_qs))
-    frac = 1.0*diff/number_of_questions*100
+    diff = np.abs(number_of_questions - len(all_qs))
+    frac = 1.0 * diff / number_of_questions * 100
     print(f"The two lists differ by {diff} / {number_of_questions} items ({frac:.2f}%)")
 
     # Compute the average position across the two methods and produce a 3rd and final sorting
-    avg_rank = np.mean(np.where(x_ids_sorted_by_aggregate[:, None] == x_ids_sorted_by_topn), axis=0)
+    avg_rank = np.mean(
+        np.where(x_ids_sorted_by_aggregate[:, None] == x_ids_sorted_by_topn), axis=0
+    )
     x_ids_sorted_average = x_ids_sorted_by_aggregate[np.argsort(avg_rank)]
 
     return x_ids_sorted_by_aggregate, x_ids_sorted_by_topn, x_ids_sorted_average
 
 
-def degrading_fit(df: pd.DataFrame, sorted_x_ids: list, y_ids: list, threads: int=4, verbose: bool=True):
+def degrading_fit(
+    df: pd.DataFrame,
+    sorted_x_ids: list,
+    y_ids: list,
+    threads: int = 4,
+    verbose: bool = True,
+):
     """Routine that wraps the `fit_models` function, gradually degrading the performance by reducing the x-set"""
     # Initiatlize some storage containers
     degraded_tuple = []
@@ -195,7 +230,7 @@ def degrading_fit(df: pd.DataFrame, sorted_x_ids: list, y_ids: list, threads: in
         # For each number of questions (from the length of sorted_x_ids down to 1)...
         for n_questions in range(len(sorted_x_ids))[::-1]:
             # Grab the first n_questions from the sorted list
-            xi = sorted_x_ids[0:n_questions+1]
+            xi = sorted_x_ids[0 : n_questions + 1]
 
             # Add the diagnostic prediction models to the queue using this reduced x-set
             #   Equivalent command: degraded_tuple = fit_models(df, xi, y_ids, verbose=False)
@@ -212,7 +247,7 @@ def degrading_fit(df: pd.DataFrame, sorted_x_ids: list, y_ids: list, threads: in
     # Concatenate and return the learners and summaries
     degraded_summaries = pd.concat(degraded_summaries)
     degraded_learners = pd.concat(degraded_learners)
-    return  degraded_learners, degraded_summaries
+    return degraded_learners, degraded_summaries
 
 
 def run():
@@ -238,39 +273,52 @@ def run():
     np.random.seed(args.random_state)
 
     # Prepare output directory
-    if not op.isdir(f'{outdir}'):
-        makedirs(f'{outdir}')
+    if not op.isdir(f"{outdir}"):
+        makedirs(f"{outdir}")
 
     # Suppress the many warnings that come up when training degrading learners by default
     if not args.warnings:
         import warnings
+
         warnings.filterwarnings("ignore")
 
     # Load the dataset and remove incomplete subjects and under-represented diagnoses
-    df, df_prev, Dx_labels_subset = load_data(infile, threshold=threshold, verbose=verbose)
+    df, df_prev, Dx_labels_subset = load_data(
+        infile, threshold=threshold, verbose=verbose
+    )
 
     # Establish baseline prediction, and further remove diagnostic labels for which the models
     #  fail to make reasonable predictions (read as: make predictions to both classes;
     #  identifiable as diagnoses with a NaN for LR+)
-    learners, summaries = fit_models(df, constants.CBCLABCL_items, Dx_labels_subset, verbose=verbose)
-    Dx_labels_subset = list(set(Dx_labels_subset) - set(summaries[summaries['LR+'].isna()].index))
+    learners, summaries = fit_models(
+        df, constants.CBCLABCL_items, Dx_labels_subset, verbose=verbose
+    )
+    Dx_labels_subset = list(
+        set(Dx_labels_subset) - set(summaries[summaries["LR+"].isna()].index)
+    )
     learners = learners.loc[Dx_labels_subset]
-    learners.to_parquet(f'{outdir}/learners.parquet')
+    learners.to_parquet(f"{outdir}/learners.parquet")
 
     summaries = summaries.loc[Dx_labels_subset]
-    summaries.to_parquet(f'{outdir}/summaries.parquet')
+    summaries.to_parquet(f"{outdir}/summaries.parquet")
     if verbose:
         print(summaries)
 
     # Compute and plot feature importance, and then save results in a CSV file
-    sorted_agg, sorted_topn, sorted_avg = calculate_feature_importance(learners, constants.CBCLABCL_items, outdir, number_of_questions=NQ)
-    importance = pd.DataFrame({'Aggregate': sorted_agg, 'Top-N': sorted_topn, 'Average': sorted_avg})
-    importance.to_parquet(f'{outdir}/feature_importance.parquet')
+    sorted_agg, sorted_topn, sorted_avg = calculate_feature_importance(
+        learners, constants.CBCLABCL_items, outdir, number_of_questions=NQ
+    )
+    importance = pd.DataFrame(
+        {"Aggregate": sorted_agg, "Top-N": sorted_topn, "Average": sorted_avg}
+    )
+    importance.to_parquet(f"{outdir}/feature_importance.parquet")
 
     # Finally, redo the learning process with a degrading set of data, iteratively removing questions
-    learners_deg, summaries_deg = degrading_fit(df, sorted_avg, Dx_labels_subset, threads=nt, verbose=verbose)
-    summaries_deg.to_parquet(f'{outdir}/summaries_degraded.parquet')
-    learners_deg.to_parquet(f'{outdir}/learners_degraded.parquet')
+    learners_deg, summaries_deg = degrading_fit(
+        df, sorted_avg, Dx_labels_subset, threads=nt, verbose=verbose
+    )
+    summaries_deg.to_parquet(f"{outdir}/summaries_degraded.parquet")
+    learners_deg.to_parquet(f"{outdir}/learners_degraded.parquet")
 
 
 if __name__ == "__main__":
