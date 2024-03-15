@@ -2,11 +2,6 @@
 
 This is a template repository. Below is a checklist of things you should do to use it:
 
-- [x] Run `setup_template.py` to set up the repository.
-- [ ] Rewrite this `README` file.
-- [ ] Update the pre-commit versions in `.pre-commit-config.yaml` and install the `pre-commit` hooks..
-- [x] Update the `LICENSE` file to your desired license and set the year.
-- [x] Update the supported versions in `SECURITY.md` or, if not relevant, delete this file.
 - [ ] Remove the placeholder src and test files, these are there merely to show how the CI works.
 - [ ] Grant third-party app permissions (e.g. Codecov) [here](https://github.com/organizations/cmi-dair/settings/installations), if necessary.
 - [ ] Either generate a `CODECOV_TOKEN` secret [here](https://github.com/cmi-dair/flowdump/blob/main/.github/workflows/python_tests.yaml) (if its a private repository) or remove the line `token: ${{ secrets.CODECOV_TOKEN }}`
@@ -53,7 +48,3 @@ import survey_subsampling
 
 survey_subsampling.short_example()
 ```
-
-## Links or References
-
-- [https://www.wikipedia.de](https://www.wikipedia.de)
