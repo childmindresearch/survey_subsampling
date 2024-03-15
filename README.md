@@ -46,7 +46,10 @@ subsample <your_parquet_file> <your_output_directory>  # And optionally, a bunch
 ## Notes
 
 Currently, there are many limitations in this module. In particular:
-- This is overfit to CBCL, ABCL, and their harmonized items
-- This is overfit to specific diagnostic labels
-- This is has solely been tested on the Brazillian High Risk Cohort dataset, and thus other quirks of organization may not generally apply
+- The CBCL, ABCL, and their harmonized items are hard-coded
+- The diagnostic labels are hard-coded
+- This is has solely been tested on the Brazillian High Risk Cohort dataset, and its quirks of organization
+- Plotting functionality is currently coupled with the evaluation
+- Plotting functionality for the degraded instrument evaluation has not been ported from the notebook
+- Subject-specific effects have not been modelled or accounted for
 - Many more, I'm sure
