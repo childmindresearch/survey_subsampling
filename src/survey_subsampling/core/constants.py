@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+"""Constant lists (e.g., questionaires and diagnoses)."""
 
 CBCL_ABCL_cannot_be_harmonized = [
     "cl1",

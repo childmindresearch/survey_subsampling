@@ -1,10 +1,15 @@
 #!/usr/bin/env python
+"""Module containing sorting approaches."""
+from typing import Tuple
 
 import numpy as np
 import pandas as pd
 
 
-def aggregate_sort(learners_dataframe: pd.DataFrame, x_ids: list):
+def aggregate_sort(
+    learners_dataframe: pd.DataFrame, x_ids: list
+) -> Tuple[pd.DataFrame, np.array]:
+    """Performs aggregate sorting across all prediction targets."""
     # Melt the dataframe into long form
     melted_learners_df = learners_dataframe.reset_index()
     melted_learners_df = melted_learners_df.melt(
@@ -22,7 +27,10 @@ def aggregate_sort(learners_dataframe: pd.DataFrame, x_ids: list):
     return melted_learners_df, sort_agg
 
 
-def topn_sort(learners_dataframe: pd.DataFrame, x_ids: list):
+def topn_sort(
+    learners_dataframe: pd.DataFrame, x_ids: list
+) -> Tuple[np.array, np.array, np.array]:
+    """Performs sorting based on topN usefulness."""
     # Redo sorting and plotting with the top-N approach
     # Initialize an empty list of questions, to be populated iteratively.
     N = len(x_ids)

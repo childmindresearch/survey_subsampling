@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+"""Defines the learner dataclass."""
 
 from dataclasses import dataclass, field
 from typing import List
@@ -6,10 +7,12 @@ from typing import List
 import numpy as np
 import pandas as pd
 
+from survey_subsampling import plotting
+
 
 @dataclass
 class Learner:
-    """Data class to record and present statistics from trained & evaluated models"""
+    """Data class to record and present statistics from trained & evaluated models."""
 
     dx: str  # Diagnosis
     hc_n: int  # Number of healthy controls
@@ -30,11 +33,11 @@ class Learner:
         default_factory=lambda: []
     )  # Performance on the validation set
 
-    proba: List = field(default_factory=lambda: [])  # Prediction probability/confidence
-    label: List = field(default_factory=lambda: [])  # Prediction labels
+    proba: np.array = np.empty()  # Prediction probability/confidence
+    label: np.array = np.empty()  # Prediction labels
 
-    def summary(self, verbose=False):
-        """Constructs a dataframe from the models and prints a summary report"""
+    def summary(self, verbose: bool = False) -> pd.DataFrame:
+        """Constructs a dataframe from the models and prints a summary report."""
         self._sanitize()
 
         tmpdict = [
@@ -55,12 +58,12 @@ class Learner:
         tmpdf = pd.DataFrame.from_dict(tmpdict)
 
         if verbose:
-            self._plot_probas()
+            plotting.single_learner_probability_distribution(self)
             print(tmpdf)
 
         return tmpdf
 
-    def _sanitize(self):
+    def _sanitize(self) -> None:
         """Make lists of lists a bit more palletable..."""
         self.proba = np.vstack(self.proba)
         self.label = np.hstack(self.label)
