@@ -1,5 +1,1 @@
-"""
-.. include:: ../../README.md
-"""
-
-from . import convert, subsample
+""".. include:: ../../README.md"""  # noqa: D415
