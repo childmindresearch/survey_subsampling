@@ -8,7 +8,7 @@ import pandas as pd
 
 def aggregate_sort(
     learners_dataframe: pd.DataFrame, x_ids: list
-) -> Tuple[pd.DataFrame, np.array]:
+) -> Tuple[pd.DataFrame, np.ndarray]:
     """Performs aggregate sorting across all prediction targets."""
     # Melt the dataframe into long form
     melted_learners_df = learners_dataframe.reset_index()
@@ -29,7 +29,7 @@ def aggregate_sort(
 
 def topn_sort(
     learners_dataframe: pd.DataFrame, x_ids: list
-) -> Tuple[np.array, np.array, np.array]:
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Performs sorting based on topN usefulness."""
     # Redo sorting and plotting with the top-N approach
     # Initialize an empty list of questions, to be populated iteratively.

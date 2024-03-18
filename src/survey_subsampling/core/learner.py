@@ -33,8 +33,8 @@ class Learner:
         default_factory=lambda: []
     )  # Performance on the validation set
 
-    proba: np.array = np.empty()  # Prediction probability/confidence
-    label: np.array = np.empty()  # Prediction labels
+    proba: np.ndarray = np.empty()  # Prediction probability/confidence
+    label: np.ndarray = np.empty()  # Prediction labels
 
     def summary(self, verbose: bool = False) -> pd.DataFrame:
         """Constructs a dataframe from the models and prints a summary report."""

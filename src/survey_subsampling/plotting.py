@@ -30,7 +30,7 @@ def single_learner_probability_distribution(learner: Learner) -> Figure:
 
 
 def many_learner_feature_importance_stacked(
-    learners: pd.DataFrame, x_ids_sorted: list, number_of_questions: int = 20
+    learners: pd.DataFrame, x_ids_sorted: np.ndarray, number_of_questions: int = 20
 ) -> Figure:
     """Plot a stacked-bar of feature importance across diagnoses."""
     fig = px.bar(
@@ -63,8 +63,8 @@ def many_learner_feature_importance_stacked(
 
 
 def many_learner_feature_importance_heatmap(
-    item_relevance: np.array,
-    x_ids_sorted: list,
+    item_relevance: np.ndarray,
+    x_ids_sorted: np.ndarray,
     idx_sorted: list,
     n_diagnoses: int,
     number_of_questions: int = 20,
