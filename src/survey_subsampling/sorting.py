@@ -7,13 +7,14 @@ import pandas as pd
 
 
 def aggregate_sort(
-    learners_dataframe: pd.DataFrame, x_ids: list
+    learners_dataframe: pd.DataFrame, x_ids: np.ndarray
 ) -> Tuple[pd.DataFrame, np.ndarray]:
     """Performs aggregate sorting across all prediction targets."""
     # Melt the dataframe into long form
     melted_learners_df = learners_dataframe.reset_index()
+
     melted_learners_df = melted_learners_df.melt(
-        id_vars=["Dx"], value_vars=x_ids, value_name="importance"
+        id_vars=["Dx"], value_vars=list(x_ids), value_name="importance"
     )
 
     # Sort based on aggregate feature importance
@@ -28,7 +29,7 @@ def aggregate_sort(
 
 
 def topn_sort(
-    learners_dataframe: pd.DataFrame, x_ids: list
+    learners_dataframe: pd.DataFrame, x_ids: np.ndarray
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Performs sorting based on topN usefulness."""
     # Redo sorting and plotting with the top-N approach

@@ -65,7 +65,7 @@ def many_learner_feature_importance_stacked(
 def many_learner_feature_importance_heatmap(
     item_relevance: np.ndarray,
     x_ids_sorted: np.ndarray,
-    idx_sorted: list,
+    idx_sorted: np.ndarray,
     n_diagnoses: int,
     number_of_questions: int = 20,
 ) -> Figure:

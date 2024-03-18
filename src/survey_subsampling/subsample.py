@@ -26,7 +26,7 @@ from survey_subsampling.core.learner import Learner
 
 def load_data(
     infile: PathLike, threshold: int = 50, verbose: bool = True
-) -> Tuple[pd.DataFrame, pd.DataFrame, list]:
+) -> Tuple[pd.DataFrame, pd.DataFrame, np.ndarray]:
     """Grabs a parquet file, extracts the columns we want, removes NaNs, and returns."""
     # Grabs data file from disk, sets diagnostic labels to 0 or 1.
     df_full = pd.read_parquet(infile)
@@ -36,11 +36,11 @@ def load_data(
 
     # Define column selector utility to iteratively use to subsample the dataset.
     def _column_selector(
-        df: pd.DataFrame, columns: list, drop: bool = False
+        df: pd.DataFrame, columns: np.ndarray, drop: bool = False
     ) -> pd.DataFrame:
         return df[columns].dropna(axis=0, how="any") if drop else df[columns]
 
-    def _get_prevalance(df: pd.DataFrame, diagnoses: list) -> pd.DataFrame:
+    def _get_prevalance(df: pd.DataFrame, diagnoses: np.ndarray) -> pd.DataFrame:
         tmp = []
         for dx in diagnoses:
             vc = df[dx].value_counts()
@@ -50,14 +50,16 @@ def load_data(
     # Initialize the dataset cleaning
     # Subset table based on all diagnoses, compute prevalance
     df = _column_selector(
-        df_full, constants.CBCLABCL_items + constants.Dx_labels_all, drop=False
+        df_full,
+        np.append(constants.CBCLABCL_items, constants.Dx_labels_all),
+        drop=False,
     )
     df_prev = _get_prevalance(df, diagnoses=constants.Dx_labels_all)
 
     # Drop low-prevalance diagnoses right away from sparse dataset
     #        full list of diagnoses  -  all diagnoses with low prevalance
-    Dx_labels_subset = list(
-        set(df_prev.index) - set(df_prev[df_prev["Pt"] < threshold].index)
+    Dx_labels_subset = np.array(
+        list(set(df_prev.index) - set(df_prev[df_prev["Pt"] < threshold].index))
     )
 
     # Prepare to iteratively repeat the process as the total N for each Dx may
@@ -66,7 +68,7 @@ def load_data(
     while low_N:
         # Repeat dataset table subsetting (densely this time) and drop low N
         df = _column_selector(
-            df_full, constants.CBCLABCL_items + Dx_labels_subset, drop=True
+            df_full, np.append(constants.CBCLABCL_items, Dx_labels_subset), drop=True
         )
         df_prev = _get_prevalance(df, diagnoses=Dx_labels_subset)
 
@@ -74,7 +76,9 @@ def load_data(
         low_N_df = df_prev[df_prev["Pt"] < threshold]
         if low_N := (len(low_N_df.index) > 0):
             # ... and remove them from the set of consideration, then go again
-            Dx_labels_subset = list(set(Dx_labels_subset) - set(low_N_df.index))
+            Dx_labels_subset = np.array(
+                list(set(Dx_labels_subset) - set(low_N_df.index))
+            )
 
     # Report on prevalance table and overall dataset length
     if verbose:
@@ -86,7 +90,7 @@ def load_data(
 
 
 def fit_models(
-    df: pd.DataFrame, x_ids: list, y_ids: list, verbose: bool = True
+    df: pd.DataFrame, x_ids: np.ndarray, y_ids: np.ndarray, verbose: bool = True
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """General purpose function for fitting callibrated classifiers."""
     # Establish Models & Cross-Validation Strategy
@@ -113,9 +117,6 @@ def fit_models(
         # Get Pt and HC counts from dataframe, and initialize the learner object
         _, uc = np.unique(y, return_counts=True)
 
-        if verbose:
-            print(f"Dx: {y_name} | HC: {uc[0]} | Pt: {uc[1]}")
-
         current_learner = Learner(dx=y_name, hc_n=uc[0], dx_n=uc[1], x_ids=x_ids)
         # Set-up a CV loop (note, we use the same CV strategy both within the
         #  Calibrated CLF and here, resulting in nested-stratified-k-fold-CV)
@@ -136,8 +137,12 @@ def fit_models(
 
             # Grab training and validation perf using the integrated scoring (accuracy)
             y_pred_tr = clf_calib.predict(X_tr)
-            current_learner.acc_train.append(accuracy_score(y_tr, y_pred_tr))
-            current_learner.acc_valid.append(accuracy_score(y_te, y_pred))
+            current_learner.acc_train = np.append(
+                current_learner.acc_train, accuracy_score(y_tr, y_pred_tr)
+            )
+            current_learner.acc_valid = np.append(
+                current_learner.acc_valid, accuracy_score(y_te, y_pred)
+            )
 
             # Grab feature importance scores
             fis = [
@@ -147,28 +152,34 @@ def fit_models(
             current_learner.fi.append(fis)
 
             # Grab the prediction probabilities
-            current_learner.proba.append(clf_calib.predict_proba(X_te))
-            current_learner.label.append(y_te)
+            current_learner.proba = np.append(
+                current_learner.proba, clf_calib.predict_proba(X_te)
+            )
+            current_learner.label = np.append(current_learner.label, y_te)
 
             # Grab the prediction labels
-            current_learner.f1.append(f1_score(y_te, y_pred))
+            current_learner.f1 = np.append(current_learner.f1, f1_score(y_te, y_pred))
 
             # Grab the sensitivity and specificity (i.e. recall of each of Dx and HC)
             report_dict = classification_report(y_te, y_pred, output_dict=True)
-            current_learner.sen.append(report_dict["1"]["recall"])
-            current_learner.spe.append(report_dict["0"]["recall"])
+            current_learner.sen = np.append(
+                current_learner.sen, report_dict["1"]["recall"]
+            )
+            current_learner.spe = np.append(
+                current_learner.spe, report_dict["0"]["recall"]
+            )
 
             # Grab the positive/negative likelihood ratios
             lrp, lrn = class_likelihood_ratios(y_te, y_pred)
-            current_learner.LRp.append(lrp)
-            current_learner.LRn.append(lrn)
+            current_learner.LRp = np.append(current_learner.LRp, lrp)
+            current_learner.LRn = np.append(current_learner.LRn, lrn)
 
         # Summarize current learner performance, save it, and get ready to go again!
         summaries += [current_learner.summary()]
 
         tmp_learner = {"Dx": current_learner.dx}
 
-        means = np.mean(np.vstack(current_learner.fi), axis=0)
+        means = np.mean(np.vstack(current_learner.fi), axis=0)  # type: ignore[call-overload]
         for assessment, importance in zip(x_ids, means):
             tmp_learner[assessment] = importance
         learners += [tmp_learner]
@@ -184,11 +195,11 @@ def fit_models(
 
 def calculate_feature_importance(
     learners: pd.DataFrame,
-    x_ids: list,
+    x_ids: np.ndarray,
     outdir: PathLike,
     number_of_questions: int = 20,
     plot: bool = True,
-) -> Tuple[list, list, list]:
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Sorts values using two strategies: aggregate and topN."""
     _, x_ids_sorted_by_aggregate = sorting.aggregate_sort(learners, x_ids)
     _, x_ids_sorted_by_topn, _ = sorting.topn_sort(learners, x_ids)
@@ -223,8 +234,8 @@ def calculate_feature_importance(
 
 def degrading_fit(
     df: pd.DataFrame,
-    sorted_x_ids: list,
-    y_ids: list,
+    sorted_x_ids: np.ndarray,
+    y_ids: np.ndarray,
     threads: int = 4,
     verbose: bool = True,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
@@ -301,8 +312,8 @@ def run() -> None:
     learners, summaries = fit_models(
         df, constants.CBCLABCL_items, Dx_labels_subset, verbose=verbose
     )
-    Dx_labels_subset = list(
-        set(Dx_labels_subset) - set(summaries[summaries["LR+"].isna()].index)
+    Dx_labels_subset = np.array(
+        list(set(Dx_labels_subset) - set(summaries[summaries["LR+"].isna()].index))
     )
     learners = learners.loc[Dx_labels_subset]
     learners.to_parquet(f"{outdir}/learners.parquet")
