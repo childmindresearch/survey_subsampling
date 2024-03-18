@@ -16,33 +16,33 @@ class Learner:
     hc_n: int  # Number of healthy controls
     dx_n: int  # Number of patients
     x_ids: np.ndarray = field(
-        default_factory=lambda: np.empty(())
+        default_factory=lambda: np.zeros(())
     )  # List of features used in the learner
     fi: List = field(default_factory=lambda: list())  # Feature importance lists
-    f1: np.ndarray = field(default_factory=lambda: np.empty(()))  # F1 score lists
+    f1: np.ndarray = field(default_factory=lambda: np.zeros(()))  # F1 score lists
     sen: np.ndarray = field(
-        default_factory=lambda: np.empty(())
+        default_factory=lambda: np.zeros(())
     )  # Sensitivity score lists
     spe: np.ndarray = field(
-        default_factory=lambda: np.empty(())
+        default_factory=lambda: np.zeros(())
     )  # Specificity score lists
     LRp: np.ndarray = field(
-        default_factory=lambda: np.empty(())
+        default_factory=lambda: np.zeros(())
     )  # Positive likelihood ratio lists
     LRn: np.ndarray = field(
-        default_factory=lambda: np.empty(())
+        default_factory=lambda: np.zeros(())
     )  # Negative likelihood ratio lists
     acc_train: np.ndarray = field(
-        default_factory=lambda: np.empty(())
+        default_factory=lambda: np.zeros(())
     )  # Performance on the training set
     acc_valid: np.ndarray = field(
-        default_factory=lambda: np.empty(())
+        default_factory=lambda: np.zeros(())
     )  # Performance on the validation set
 
     proba: np.ndarray = field(
-        default_factory=lambda: np.empty(())
+        default_factory=lambda: np.zeros(())
     )  # Prediction probability/confidence
-    label: np.ndarray = field(default_factory=lambda: np.empty(()))  # Prediction labels
+    label: np.ndarray = field(default_factory=lambda: np.zeros(()))  # Prediction labels
 
     def summary(self) -> pd.DataFrame:
         """Constructs a dataframe from the models and prints a summary report."""
