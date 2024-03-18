@@ -35,7 +35,7 @@ def topn_sort(
     # Redo sorting and plotting with the top-N approach
     # Initialize an empty list of questions, to be populated iteratively.
     N = len(x_ids)
-    item_relevance = np.empty((N, len(x_ids)))
+    item_relevance = np.zeros((N, len(x_ids)))
 
     # For each threshold of "we can only include N questions..."
     for n in range(N):
