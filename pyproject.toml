@@ -11,7 +11,7 @@ include = "survey_subsampling"
 from = "src"
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = "~3.11"
 plotly = "^5.20.0"
 pandas = "^2.2.1"
 scikit-learn = "^1.4.1.post1"
