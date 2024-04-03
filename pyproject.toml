@@ -2,16 +2,21 @@
 name = "survey_subsampling"
 version = "0.1.0"
 description = "Why take a full survey when you can just answer a few questions?"
-authors = [ "gkiar <gkiar@bridges>" ]
+authors = ["gkiar <gkiar@bridges>"]
 license = "LGPL-2.1"
 readme = "README.md"
 
-  [[tool.poetry.packages]]
-  include = "survey_subsampling"
-  from = "src"
+[[tool.poetry.packages]]
+include = "survey_subsampling"
+from = "src"
 
-  [tool.poetry.dependencies]
-  python = "^3.11"
+[tool.poetry.dependencies]
+python = "~3.11"
+plotly = "^5.20.0"
+pandas = "^2.2.1"
+scikit-learn = "^1.4.1.post1"
+pyreadr = "^0.5.0"
+numpy = "^1.26.4"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.1.1"
@@ -22,11 +27,16 @@ pytest-cov = "^4.1.0"
 [tool.poetry.group.docs.dependencies]
 pdoc = "^14.4.0"
 
-  [tool.poetry.extras]
-  docs = [ "pdoc" ]
+[tool.poetry.extras]
+docs = ["pdoc"]
+
+[tool.poetry.scripts]
+subsample_convert = 'survey_subsampling.convert:run'
+subsample = 'survey_subsampling.subsample:run'
+subsample_plot = 'survey_subsampling.plotting:run'
 
 [tool.pytest.ini_options]
-pythonpath = [ "src" ]
+pythonpath = ["src"]
 
 [tool.mypy]
 ignore_missing_imports = true
@@ -57,32 +67,28 @@ exclude = [
 ]
 line-length = 88
 indent-width = 4
-src = [ "src" ]
+src = ["src"]
 target-version = "py311"
 
-  [tool.ruff.lint]
-  select = [ "ANN", "D", "E", "F", "I" ]
-  ignore = [ "ANN101", "ANN102" ]
-  fixable = [ "ALL" ]
-  unfixable = [ ]
-  dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+[tool.ruff.lint]
+select = ["ANN", "D", "E", "F", "I"]
+ignore = ["ANN101", "ANN102"]
+fixable = ["ALL"]
+unfixable = []
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
-  [tool.ruff.format]
-  quote-style = "double"
-  indent-style = "space"
-  skip-magic-trailing-comma = false
-  line-ending = "auto"
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
 
-  [tool.ruff.pydocstyle]
-  convention = "google"
+[tool.ruff.pydocstyle]
+convention = "google"
 
-  [tool.ruff.per-file-ignores]
-  "tests/**/*.py" = [ ]
+[tool.ruff.per-file-ignores]
+"tests/**/*.py" = []
 
 [build-system]
-requires = [ "poetry-core>=1.2.0" ]
+requires = ["poetry-core>=1.2.0"]
 build-backend = "poetry.core.masonry.api"
-
-[tool.poetry.scripts]
-subsample_convert = 'survey_subsampling.convert:run'
-subsample = 'survey_subsampling.subsample:run'

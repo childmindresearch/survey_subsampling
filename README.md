@@ -42,6 +42,11 @@ subsample_convert <your_Rdata_file> <your_converted_parquet_file>
 subsample <your_parquet_file> <your_output_directory>  # And optionally, a bunch of other arguments
 ```
 
+### Want to plot your results?
+
+```bash
+subsample_plot <your_output_directory>  # And optionally, a bunch of other arguments
+```
 
 ## Notes
 
