@@ -12,7 +12,7 @@ from = "src"
 
 [tool.poetry.dependencies]
 python = "~3.11"
-plotly = "^5.20.0"
+plotly = "^5.22.0"
 pandas = "^2.2.1"
 scikit-learn = "^1.4.1.post1"
 pyreadr = "^0.5.0"
